@@ -1,0 +1,109 @@
+---
+title: "Модульное ДЗ 1"
+output: html_notebook
+---
+Пакеты
+```{r}
+install.packages('rio')
+install.packages('factoextra')
+install.packages('corrplot')
+library(rio)
+library(factoextra)
+library(corrplot)
+```
+
+```{r}
+id <- "18APko1saW53JXw2pffy0WEvJHCz8DFL0"
+datas <- read.csv(sprintf("https://docs.google.com/uc?id=%s&export=download", id))
+
+```
+Приведенный датасет взят из открытого источника (с UCI Machine Learning Repository. Ссылка http://archive.ics.uci.edu/ml/datasets/Heart+Disease) и описывает данные о заболеваниях сердца.
+Задача исследования состоит в разбиении множества данных о пациентах на кластеры, что поможет понять взаимосвязанность признаков пациентов между собой. 
+Приведем описания переменных:
+age - age in years
+sex - sex (1 = male; 0 = female)
+cp - chest pain type (1 = typical angina; 2 = atypical angina; 3 = non-anginal pain; 4 = asymptomatic)
+trestbps - resting blood pressure (in mm Hg on admission to the hospital)
+chol - serum cholestoral in mg/dl
+fbs - fasting blood sugar > 120 mg/dl (1 = true; 0 = false)
+restecg - resting electrocardiographic results (0 = normal; 1 = having ST-T; 2 = hypertrophy)
+thalach - maximum heart rate achieved
+exang - exercise induced angina (1 = yes; 0 = no)
+oldpeak - ST depression induced by exercise relative to rest
+slope - the slope of the peak exercise ST segment (1 = upsloping; 2 = flat; 3 = downsloping)
+ca - number of major vessels (0-3) colored by flourosopy
+thal - 3 = normal; 6 = fixed defect; 7 = reversable defect
+num - the predicted attribute - diagnosis of heart disease (angiographic disease status) (Value 0 = < 50% diameter narrowing; Value 1 = > 50% diameter narrowing)
+Визуализируем данные:
+```{r}
+boxplot(scale(datas))
+
+for(j in 1:ncol(datas)){
+  hist(datas[,j], breaks = sqrt(nrow(datas)),
+       xlab = colnames(datas)[j], ylab = 'Частота', main = 'Гистограмма частот')
+}
+```
+Проверим данные на мультиколлинеарность:
+```{r}
+cor(datas)
+cor.mtest(datas)$p
+```
+Признаки слабо скоррелированы между собой, что весьма неплохо, так что мультиколлинеарность можно не устранять. 
+Для кластерного анализа я решил оставить следующие переменные: 
+1. oldpeak
+2. chol
+3. trtbps
+4. thalachh
+Так как (к ним можно понять описание) они предположительно важны для кластеризации, являются в строгом смысле слова непрерывными и т.д. 
+```{r}
+ndata <- datas[,c('oldpeak', 'chol', 'trtbps', 'thalachh')]
+```
+Стандартизируем данные в столбцах thalachh, chol и trtbps:
+```{r}
+ndata$thalachh <- scale(ndata$thalachh)
+ndata$chol <- scale(ndata$chol)
+ndata$trtbps <- scale(ndata$trtbps)
+```
+Наиболее оптимальной будет евклидова мера, так как она максимально описывает влияние наиболее отдаленных объектов, что важно в случае работы с медицинскими данными. 
+```{r}
+eucl_dist <- dist(ndata[sample(rownames(ndata), 30),], method = 'euclidian')
+fviz_dist(eucl_dist)
+```
+```{r}
+plot(eucl_dist)
+```
+
+```{r}
+hclust_w <- hcut(ndata, k = 3, hc_metric = 'euclidian', hc_method = 'ward.D2')
+plot(hclust_w)
+```
+По дендрограмме можно предположить, что наиболее разумно выбрать пять кластеров
+```{r}
+fviz_dend(hclust_w,
+          cex = 0.3, 
+          color_labels_by_k = TRUE, 
+          main = 'Дендрограмма (принцип Варда)', ylab = 'Расстояние')
+```
+```{r}
+fviz_nbclust(ndata, kmeans, method = 'wss') +
+  labs(x = 'число кластеров', y = 'сумма внутрикластерных дисперсий',
+       title = 'Зависимость WSS от числа кластеров')
+```
+Откуда можно понять, что оптимальное число кластеров - от 2 до 4, предположительно оптимально 2. 
+```{r}
+fviz_nbclust(ndata, kmeans, method = 'silhouette') +
+  labs(x = 'число кластеров', y = 'средняя ширина силуэта по всем точкам',
+       title = 'Зависимость средней ширины силуэта от числа кластеров')
+```
+Откуда оптимальное количество кластеров равно 2. 
+```{r}
+kmeans <- kmeans(ndata, centers = 2)
+kmeans
+```
+
+
+```{r}
+plot(1:ncol(ndata), kmeans$centers[1,], type = 'l', col = 'red', lwd = 2, ylim = c(-3, 1.5),
+     ylab = 'Среднее значение признака', xlab = 'Классифицирующий признак', xaxt = 'n')
+
+```
